@@ -10,11 +10,6 @@ type Record struct {
 	Parent int
 }
 
-type NodeContainer struct {
-	Node     *Node
-	ParentID int
-}
-
 type Node struct {
 	ID       int
 	Children []*Node
@@ -25,10 +20,15 @@ func Build(records []Record) (*Node, error) {
 	if len(records) == 0 {
 		return nil, nil
 	}
+	// records should be ordered
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].ID < records[j].ID
+	})
+
 	// create each node and save it in a map
-	containers := make(map[int]*NodeContainer)
+	nodes := make(map[int]*Node)
 	for _, r := range records {
-		if _, ok := containers[r.ID]; ok {
+		if _, ok := nodes[r.ID]; ok {
 			return nil, errors.New("duplicated node")
 		}
 		if r.ID == 0 && r.Parent != 0 {
@@ -40,40 +40,32 @@ func Build(records []Record) (*Node, error) {
 		if r.ID < r.Parent {
 			return nil, errors.New("cannot cycle indirectly")
 		}
-		containers[r.ID] = &NodeContainer{
-			Node: &Node{
-				ID:       r.ID,
-				Children: nil,
-			},
-			ParentID: r.Parent,
+		nodes[r.ID] = &Node{
+			ID:       r.ID,
+			Children: nil,
 		}
 	}
+
 	// there should be a root node
-	if _, ok := containers[0]; !ok {
+	if _, ok := nodes[0]; !ok {
 		return nil, errors.New("no root node")
 	}
 
 	// build the tree
-	for _, cont := range containers {
-		// for every no-root nodes, add it to its parent
-		if cont.Node.ID > cont.ParentID {
-			list := containers[cont.ParentID].Node.Children
+	for i, r := range records {
+		if i != r.ID {
+			return nil, errors.New("tree non-continuous")
+		}
+		// for every no-root node, add it to its parent
+		if r.ID > r.Parent {
+			list := nodes[r.Parent].Children
 			if list == nil {
 				list = make([]*Node, 0)
 			}
-			list = append(list, cont.Node)
-			// node slices should be ordered
-			sort.Slice(list, func(i, j int) bool {
-				return list[i].ID < list[j].ID
-			})
-			containers[cont.ParentID].Node.Children = list
+			list = append(list, nodes[r.ID])
+			nodes[r.Parent].Children = list
 		}
 	}
-	for i := 0; i < len(records); i++ {
-		if _, ok := containers[i]; !ok {
-			return nil, errors.New("tree non-continuous")
-		}
 
-	}
-	return containers[0].Node, nil
+	return nodes[0], nil
 }
